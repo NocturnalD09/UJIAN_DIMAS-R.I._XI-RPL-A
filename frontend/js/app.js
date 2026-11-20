@@ -1,358 +1,446 @@
+
 const API_URL = 'http://localhost:3000/api';
 
-// Menyimpan cache data untuk keperluan tombol Edit
 let cacheKategori = [];
 let cacheAlat = [];
+let cachePeminjaman = [];
 
-// Fungsi Notifikasi Visual (Sukses / Error dari PostgreSQL)
+// ALERT
 function showAlert(pesan, tipe = 'success') {
   const alertBox = document.getElementById('alert-box');
-  alertBox.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'border-green-300', 'bg-red-100', 'text-red-800', 'border-red-300');
 
-  if (tipe === 'error') {
-    alertBox.classList.add('bg-red-100', 'text-red-800', 'border-red-300');
-  } else {
-    alertBox.classList.add('bg-green-100', 'text-green-800', 'border-green-300');
+  if (!alertBox) {
+    alert(pesan);
+    return;
   }
 
   alertBox.textContent = pesan;
-  alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  alertBox.className = `p-3 mb-4 text-sm ${
+    tipe === 'error'
+      ? 'bg-red-900 text-red-200'
+      : 'bg-zinc-800 text-white'
+  }`;
 
-  setTimeout(() => {
-    alertBox.classList.add('hidden');
-  }, 5000);
+  alertBox.classList.remove('hidden');
 }
 
-// ==========================================
-// 1. CRUD KATEGORI ALAT (ON DELETE CASCADE)
-// ==========================================
+// API REQUEST
+async function request(url, options = {}) {
+  const response = await fetch(API_URL + url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers
+    }
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Terjadi kesalahan');
+  }
+
+  return data;
+}
+
+// FORMAT TANGGAL
+function formatTanggal(tanggal) {
+  if (!tanggal) return '-';
+
+  const [tahun, bulan, hari] = tanggal.toString().slice(0, 10).split('-');
+
+  return `${hari}/${bulan}/${tahun}`;
+}
+
+function tanggalHariIni() {
+  const sekarang = new Date();
+  const tahun = sekarang.getFullYear();
+  const bulan = String(sekarang.getMonth() + 1).padStart(2, '0');
+  const hari = String(sekarang.getDate()).padStart(2, '0');
+
+  return `${tahun}-${bulan}-${hari}`;
+}
+
+// KATEGORI
 async function loadKategori() {
   try {
-    const res = await fetch(`${API_URL}/kategori`);
-    cacheKategori = await res.json();
+    cacheKategori = await request('/kategori');
 
-    const listKategori = document.getElementById('list-kategori');
-    const selectKategoriAlat = document.getElementById('alat_id_kategori');
+    const list = document.getElementById('list-kategori');
+    const select = document.getElementById('alat_id_kategori');
 
-    listKategori.innerHTML = '';
-    selectKategoriAlat.innerHTML = '<option value="">-- Pilih Kategori --</option>';
+    if (list) {
+      list.innerHTML = '';
 
-    cacheKategori.forEach((kat) => {
-      // Isi dropdown di form master alat
-      const opt = document.createElement('option');
-      opt.value = kat.id_kategori;
-      opt.textContent = kat.nama_kategori;
-      selectKategoriAlat.appendChild(opt);
+      cacheKategori.forEach(k => {
+        list.innerHTML += `
+          <tr class="border-b border-zinc-800">
+            <td class="p-3">${k.nama_kategori}</td>
+            <td class="p-3">${k.deskripsi || '-'}</td>
+            <td class="p-3">
+              <button onclick="editKategori(${k.id_kategori})">Edit</button>
+              <button onclick="hapusKategori(${k.id_kategori})">Hapus</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
 
-      // Isi list kategori
-      const li = `
-        <li class="py-2 flex justify-between items-center gap-2">
-          <div>
-            <p class="font-medium text-slate-800">${kat.nama_kategori}</p>
-            <p class="text-xs text-slate-500">${kat.deskripsi || '-'}</p>
-          </div>
-          <div class="flex gap-1.5 shrink-0">
-            <button onclick="editKategori(${kat.id_kategori})" class="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 px-2 py-1 rounded">Edit</button>
-            <button onclick="hapusKategori(${kat.id_kategori})" class="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded">Hapus</button>
-          </div>
-        </li>
-      `;
-      listKategori.insertAdjacentHTML('beforeend', li);
-    });
-  } catch (err) {
-    console.error('Gagal memuat kategori:', err);
+    if (select) {
+      select.innerHTML = '<option value="">Pilih kategori</option>';
+
+      cacheKategori.forEach(k => {
+        select.innerHTML += `
+          <option value="${k.id_kategori}">
+            ${k.nama_kategori}
+          </option>
+        `;
+      });
+    }
+
+    updateDashboard();
+  } catch (error) {
+    console.error(error);
   }
 }
 
-document.getElementById('form-kategori').addEventListener('submit', async (e) => {
+async function simpanKategori(e) {
   e.preventDefault();
-  const idEdit = document.getElementById('edit_id_kategori').value;
-  const payload = {
-    nama_kategori: document.getElementById('nama_kategori').value.trim(),
-    deskripsi: document.getElementById('deskripsi_kategori').value.trim()
+
+  const id = document.getElementById('id_kategori')?.value;
+
+  const data = {
+    nama_kategori: document.getElementById('nama_kategori').value,
+    deskripsi: document.getElementById('deskripsi').value
   };
 
-  const url = idEdit ? `${API_URL}/kategori/${idEdit}` : `${API_URL}/kategori`;
-  const method = idEdit ? 'PUT' : 'POST';
-
   try {
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    await request(id ? `/kategori/${id}` : '/kategori', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(data)
     });
-    const data = await res.json();
-    if (!res.ok) return showAlert(data.error, 'error');
 
-    showAlert(idEdit ? 'Kategori berhasil diperbarui!' : 'Kategori baru ditambahkan!');
+    showAlert('Kategori berhasil disimpan');
     resetFormKategori();
     await loadKategori();
-    await loadAlat();
-  } catch (err) {
-    showAlert('Gagal terhubung ke server.', 'error');
+  } catch (error) {
+    showAlert(error.message, 'error');
   }
-});
+}
 
 function editKategori(id) {
-  const kat = cacheKategori.find((k) => k.id_kategori === id);
-  if (!kat) return;
-  document.getElementById('edit_id_kategori').value = kat.id_kategori;
-  document.getElementById('nama_kategori').value = kat.nama_kategori;
-  document.getElementById('deskripsi_kategori').value = kat.deskripsi || '';
-  document.getElementById('judul-form-kategori').textContent = 'Edit Kategori';
-  document.getElementById('btn-submit-kategori').textContent = 'Update Kategori';
-  document.getElementById('btn-batal-kategori').classList.remove('hidden');
+  const kategori = cacheKategori.find(k => k.id_kategori === id);
+  if (!kategori) return;
+
+  document.getElementById('id_kategori').value = kategori.id_kategori;
+  document.getElementById('nama_kategori').value = kategori.nama_kategori;
+  document.getElementById('deskripsi').value = kategori.deskripsi || '';
 }
 
 function resetFormKategori() {
-  document.getElementById('form-kategori').reset();
-  document.getElementById('edit_id_kategori').value = '';
-  document.getElementById('judul-form-kategori').textContent = 'Tambah Kategori';
-  document.getElementById('btn-submit-kategori').textContent = 'Simpan Kategori';
-  document.getElementById('btn-batal-kategori').classList.add('hidden');
+  document.getElementById('form-kategori')?.reset();
+
+  const id = document.getElementById('id_kategori');
+  if (id) id.value = '';
 }
 
 async function hapusKategori(id) {
-  if (!confirm('PERINGATAN (ON DELETE CASCADE): Menghapus kategori ini akan ikut menghapus semua alat di dalamnya. Lanjutkan?')) return;
+  if (!confirm('Hapus kategori ini?')) return;
 
   try {
-    const res = await fetch(`${API_URL}/kategori/${id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) return showAlert(data.error, 'error');
-
-    showAlert('Kategori beserta alat di dalamnya berhasil dihapus.');
+    await request(`/kategori/${id}`, { method: 'DELETE' });
+    showAlert('Kategori berhasil dihapus');
     await loadKategori();
-    await loadAlat();
-  } catch (err) {
-    showAlert('Gagal menghapus kategori.', 'error');
+  } catch (error) {
+    showAlert(error.message, 'error');
   }
 }
 
-
+// ALAT
 async function loadAlat() {
   try {
-    const res = await fetch(`${API_URL}/alat`);
-    cacheAlat = await res.json();
+    cacheAlat = await request('/alat');
 
-    const tabelAlat = document.getElementById('tabel-alat');
-    const selectPinjamAlat = document.getElementById('pinjam_id_alat');
+    const tabel = document.getElementById('tabel-alat');
+    const select = document.getElementById('pinjam_id_alat');
 
-    tabelAlat.innerHTML = '';
-    selectPinjamAlat.innerHTML = '<option value="">-- Pilih Alat --</option>';
+    if (tabel) {
+      tabel.innerHTML = '';
 
-    cacheAlat.forEach((alat) => {
-      // Isi dropdown peminjaman (tetap tampilkan stok agar bisa uji trigger RAISE EXCEPTION jika input melebihi stok)
-      const opt = document.createElement('option');
-      opt.value = alat.id_alat;
-      opt.textContent = `${alat.nama_alat} (Stok: ${alat.stok})`;
-      selectPinjamAlat.appendChild(opt);
+      cacheAlat.forEach(a => {
+        const aksi = document.getElementById('form-alat')
+          ? `
+            <td class="p-3">
+              <button onclick="editAlat(${a.id_alat})">Edit</button>
+              <button onclick="hapusAlat(${a.id_alat})">Hapus</button>
+            </td>
+          `
+          : '';
 
-      const badgeStok = alat.stok > 0
-        ? `<span class="bg-green-100 text-green-700 px-2.5 py-0.5 rounded-full font-semibold">${alat.stok}</span>`
-        : `<span class="bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full font-semibold">0</span>`;
+        tabel.innerHTML += `
+          <tr class="border-b border-zinc-800">
+            <td class="p-3">${a.nama_alat}</td>
+            <td class="p-3">${a.nama_kategori || '-'}</td>
+            <td class="p-3">${a.lokasi || '-'}</td>
+            <td class="p-3">${a.kondisi}</td>
+            <td class="p-3">${a.stok}</td>
+            ${aksi}
+          </tr>
+        `;
+      });
+    }
 
-      const row = `
-        <tr class="hover:bg-slate-50">
-          <td class="py-2.5 px-3 font-medium">${alat.nama_alat}</td>
-          <td class="py-2.5 px-3 text-slate-600">${alat.nama_kategori || '-'}</td>
-          <td class="py-2.5 px-3 text-slate-600">${alat.lokasi || '-'}</td>
-          <td class="py-2.5 px-3">${alat.kondisi || 'Baik'}</td>
-          <td class="py-2.5 px-3 text-center">${badgeStok}</td>
-          <td class="py-2.5 px-3 text-center space-x-1">
-            <button onclick="editAlat(${alat.id_alat})" class="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 px-2 py-1 rounded">Edit</button>
-            <button onclick="hapusAlat(${alat.id_alat})" class="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded">Hapus</button>
-          </td>
-        </tr>
-      `;
-      tabelAlat.insertAdjacentHTML('beforeend', row);
-    });
-  } catch (err) {
-    console.error('Gagal memuat alat:', err);
+    if (select) {
+      select.innerHTML = '<option value="">Pilih alat</option>';
+
+      cacheAlat.forEach(a => {
+        select.innerHTML += `
+          <option value="${a.id_alat}" ${a.stok <= 0 ? 'disabled' : ''}>
+            ${a.nama_alat} (Stok: ${a.stok})
+          </option>
+        `;
+      });
+    }
+
+    updateDashboard();
+  } catch (error) {
+    console.error(error);
   }
 }
 
-document.getElementById('form-alat').addEventListener('submit', async (e) => {
+async function simpanAlat(e) {
   e.preventDefault();
-  const idEdit = document.getElementById('edit_id_alat').value;
-  const payload = {
-    nama_alat: document.getElementById('nama_alat').value.trim(),
-    id_kategori: parseInt(document.getElementById('alat_id_kategori').value),
-    kondisi: document.getElementById('kondisi_alat').value.trim(),
-    lokasi: document.getElementById('lokasi_alat').value.trim(),
-    stok: parseInt(document.getElementById('stok_alat').value)
+
+  const id = document.getElementById('id_alat')?.value;
+
+  const data = {
+    nama_alat: document.getElementById('nama_alat').value,
+    id_kategori: Number(document.getElementById('alat_id_kategori').value),
+    kondisi: document.getElementById('kondisi').value,
+    stok: Number(document.getElementById('stok').value),
+    lokasi: document.getElementById('lokasi').value
   };
 
-  const url = idEdit ? `${API_URL}/alat/${idEdit}` : `${API_URL}/alat`;
-  const method = idEdit ? 'PUT' : 'POST';
-
   try {
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    await request(id ? `/alat/${id}` : '/alat', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(data)
     });
-    const data = await res.json();
-    if (!res.ok) return showAlert(data.error, 'error');
 
-    showAlert(idEdit ? 'Data alat berhasil diupdate!' : 'Alat baru berhasil ditambahkan!');
+    showAlert('Data alat berhasil disimpan');
     resetFormAlat();
     await loadAlat();
-  } catch (err) {
-    showAlert('Gagal menyimpan data alat.', 'error');
+  } catch (error) {
+    showAlert(error.message, 'error');
   }
-});
+}
 
 function editAlat(id) {
-  const alat = cacheAlat.find((a) => a.id_alat === id);
+  const alat = cacheAlat.find(a => a.id_alat === id);
   if (!alat) return;
-  document.getElementById('edit_id_alat').value = alat.id_alat;
+
+  document.getElementById('id_alat').value = alat.id_alat;
   document.getElementById('nama_alat').value = alat.nama_alat;
   document.getElementById('alat_id_kategori').value = alat.id_kategori;
-  document.getElementById('kondisi_alat').value = alat.kondisi || 'Baik';
-  document.getElementById('lokasi_alat').value = alat.lokasi || '';
-  document.getElementById('stok_alat').value = alat.stok;
-
-  document.getElementById('judul-form-alat').textContent = 'Edit Master Alat';
-  document.getElementById('btn-submit-alat').textContent = 'Update Alat';
-  document.getElementById('btn-batal-alat').classList.remove('hidden');
+  document.getElementById('kondisi').value = alat.kondisi;
+  document.getElementById('stok').value = alat.stok;
+  document.getElementById('lokasi').value = alat.lokasi || '';
 }
 
 function resetFormAlat() {
-  document.getElementById('form-alat').reset();
-  document.getElementById('edit_id_alat').value = '';
-  document.getElementById('kondisi_alat').value = 'Baik';
-  document.getElementById('judul-form-alat').textContent = 'Kelola Master Alat';
-  document.getElementById('btn-submit-alat').textContent = '+ Tambah Alat';
-  document.getElementById('btn-batal-alat').classList.add('hidden');
+  document.getElementById('form-alat')?.reset();
+
+  const id = document.getElementById('id_alat');
+  if (id) id.value = '';
 }
 
 async function hapusAlat(id) {
-  if (!confirm('Hapus alat ini dari database?')) return;
+  if (!confirm('Hapus alat ini?')) return;
 
   try {
-    const res = await fetch(`${API_URL}/alat/${id}`, { method: 'DELETE' });
-    const data = await res.json();
-
-    // Menangkap error ON DELETE RESTRICT jika alat terikat dengan tabel peminjaman
-    if (!res.ok) {
-      if (data.error && data.error.includes('foreign key constraint')) {
-        return showAlert('Gagal menghapus: Alat ini sedang dipinjam atau tercatat dalam riwayat transaksi (ON DELETE RESTRICT).', 'error');
-      }
-      return showAlert(data.error, 'error');
-    }
-
-    showAlert('Alat berhasil dihapus.');
+    await request(`/alat/${id}`, { method: 'DELETE' });
+    showAlert('Alat berhasil dihapus');
     await loadAlat();
-  } catch (err) {
-    showAlert('Gagal menghapus alat.', 'error');
+  } catch (error) {
+    showAlert(error.message, 'error');
   }
 }
 
-// ==========================================
-// 3. TRANSAKSI PEMINJAMAN & PENGEMBALIAN
-// ==========================================
+// PEMINJAMAN
 async function loadPeminjaman() {
   try {
-    const res = await fetch(`${API_URL}/peminjaman`);
-    const dataPeminjaman = await res.json();
+    cachePeminjaman = await request('/peminjaman');
 
-    const tabelPeminjaman = document.getElementById('tabel-peminjaman');
-    tabelPeminjaman.innerHTML = '';
+    const tabel = document.getElementById('tabel-peminjaman');
 
-    if (dataPeminjaman.length === 0) {
-      tabelPeminjaman.innerHTML = `
-        <tr>
-          <td colspan="7" class="py-4 text-center text-slate-500">Belum ada data peminjaman.</td>
+    updateDashboard();
+
+    if (!tabel) return;
+
+    tabel.innerHTML = '';
+
+    cachePeminjaman.forEach(p => {
+      tabel.innerHTML += `
+        <tr class="border-b border-zinc-800">
+          <td class="p-3">${p.nama_peminjam}</td>
+          <td class="p-3">${p.kelas}</td>
+          <td class="p-3">${p.nama_alat}</td>
+          <td class="p-3">${p.jumlah}</td>
+          <td class="p-3">${formatTanggal(p.tanggal_pinjam)}</td>
+          <td class="p-3">${formatTanggal(p.tanggal_rencana_kembali)}</td>
+          <td class="p-3">${formatTanggal(p.tanggal_kembali)}</td>
+          <td class="p-3">${p.status_tampilan || p.status}</td>
+          <td class="p-3">
+            ${
+              p.status === 'Dipinjam'
+                ? `<button onclick="kembalikanAlat(${p.id_peminjaman})">Kembalikan</button>`
+                : 'Selesai'
+            }
+          </td>
         </tr>
       `;
-      return;
-    }
-
-    dataPeminjaman.forEach((item) => {
-      const tglPinjam = new Date(item.tanggal_pinjam).toLocaleDateString('id-ID');
-
-      let badgeStatus = '';
-      if (item.status === 'Dipinjam') {
-        badgeStatus = '<span class="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-xs font-medium">Dipinjam</span>';
-      } else if (item.status === 'Dikembalikan') {
-        badgeStatus = '<span class="bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full text-xs font-medium">Dikembalikan</span>';
-      } else {
-        badgeStatus = `<span class="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-xs font-medium">${item.status}</span>`;
-      }
-
-      const tombolAksi = item.status === 'Dipinjam'
-        ? `<button onclick="kembalikanAlat(${item.id_peminjaman})" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition">Kembalikan</button>`
-        : `<span class="text-slate-400 text-xs">Selesai</span>`;
-
-      const row = `
-        <tr class="hover:bg-slate-50">
-          <td class="py-2.5 px-3 font-medium">${item.nama_peminjam}</td>
-          <td class="py-2.5 px-3">${item.kelas}</td>
-          <td class="py-2.5 px-3">${item.nama_alat}</td>
-          <td class="py-2.5 px-3 text-center">${item.jumlah}</td>
-          <td class="py-2.5 px-3">${tglPinjam}</td>
-          <td class="py-2.5 px-3">${badgeStatus}</td>
-          <td class="py-2.5 px-3 text-center">${tombolAksi}</td>
-        </tr>
-      `;
-      tabelPeminjaman.insertAdjacentHTML('beforeend', row);
     });
-  } catch (err) {
-    console.error('Gagal memuat peminjaman:', err);
+  } catch (error) {
+    console.error(error);
   }
 }
 
-document.getElementById('form-peminjaman').addEventListener('submit', async (e) => {
+async function simpanPeminjaman(e) {
   e.preventDefault();
-  const payload = {
-    id_alat: parseInt(document.getElementById('pinjam_id_alat').value),
+
+  const data = {
+    id_alat: Number(document.getElementById('pinjam_id_alat').value),
     nama_peminjam: document.getElementById('nama_peminjam').value.trim(),
     kelas: document.getElementById('kelas').value.trim(),
-    jumlah: parseInt(document.getElementById('jumlah').value)
+    jumlah: Number(document.getElementById('jumlah').value),
+    tanggal_rencana_kembali: document.getElementById('tanggal_rencana_kembali').value
   };
 
-  try {
-    const res = await fetch(`${API_URL}/peminjaman`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-
-    // Menangkap RAISE EXCEPTION dari trigger update_stok_alat() jika stok tidak cukup
-    if (!res.ok) {
-      return showAlert(`Ditolak Database: ${data.error}`, 'error');
-    }
-
-    showAlert('Peminjaman berhasil dicatat! Stok otomatis berkurang.');
-    document.getElementById('form-peminjaman').reset();
-    await loadAlat();
-    await loadPeminjaman();
-  } catch (err) {
-    showAlert('Gagal terhubung ke server.', 'error');
+  if (!data.nama_peminjam || !data.kelas || !data.id_alat || data.jumlah <= 0) {
+    showAlert('Lengkapi nama, kelas, alat, dan jumlah terlebih dahulu', 'error');
+    return;
   }
-});
 
-async function kembalikanAlat(idPeminjaman) {
-  if (!confirm('Konfirmasi pengembalian alat ini?')) return;
+  if (!data.tanggal_rencana_kembali) {
+    showAlert('Pilih tanggal rencana pengembalian terlebih dahulu', 'error');
+    return;
+  }
+
+  if (data.tanggal_rencana_kembali <= tanggalHariIni()) {
+    showAlert('Tanggal pengembalian harus setelah tanggal peminjaman', 'error');
+    return;
+  }
+
+  const alat = cacheAlat.find(a => a.id_alat === data.id_alat);
+
+  if (!alat) {
+    showAlert('Data alat tidak ditemukan', 'error');
+    return;
+  }
+
+  if (data.jumlah > Number(alat.stok)) {
+    showAlert(`Stok tersedia hanya ${alat.stok}`, 'error');
+    return;
+  }
 
   try {
-    const res = await fetch(`${API_URL}/peminjaman/${idPeminjaman}/kembali`, {
-      method: 'PUT'
+    await request('/peminjaman', {
+      method: 'POST',
+      body: JSON.stringify(data)
     });
-    const data = await res.json();
-    if (!res.ok) return showAlert(data.error, 'error');
 
-    showAlert('Alat berhasil dikembalikan! Stok otomatis bertambah.');
+    showAlert('Peminjaman berhasil diajukan');
+
+    document.getElementById('form-peminjaman').reset();
+
+    const tanggalPinjam = document.getElementById('tanggal_pinjam');
+    if (tanggalPinjam) tanggalPinjam.value = tanggalHariIni();
+
     await loadAlat();
     await loadPeminjaman();
-  } catch (err) {
-    showAlert('Gagal memproses pengembalian.', 'error');
+  } catch (error) {
+    showAlert(error.message, 'error');
   }
 }
 
-// Inisialisasi awal saat halaman dibuka
+async function kembalikanAlat(id) {
+  if (!confirm('Konfirmasi pengembalian alat?')) return;
+
+  try {
+    await request(`/peminjaman/${id}/kembali`, {
+      method: 'PUT'
+    });
+
+    showAlert('Alat berhasil dikembalikan');
+
+    await loadAlat();
+    await loadPeminjaman();
+  } catch (error) {
+    showAlert(error.message, 'error');
+  }
+}
+
+// DASHBOARD
+function updateDashboard() {
+  const kategori = document.getElementById('total-kategori');
+  const stok = document.getElementById('total-alat');
+  const pinjam = document.getElementById('total-peminjaman');
+  const belum = document.getElementById('belum-kembali');
+
+  if (kategori) kategori.textContent = cacheKategori.length;
+
+  if (stok) {
+    stok.textContent = cacheAlat.reduce(
+      (total, alat) => total + Number(alat.stok),
+      0
+    );
+  }
+
+  if (pinjam) pinjam.textContent = cachePeminjaman.length;
+
+  if (belum) {
+    belum.textContent = cachePeminjaman.filter(
+      p => p.status === 'Dipinjam'
+    ).length;
+  }
+}
+
+// JALANKAN
 document.addEventListener('DOMContentLoaded', async () => {
+  const tanggalPinjam = document.getElementById('tanggal_pinjam');
+
+  if (tanggalPinjam) {
+    tanggalPinjam.value = tanggalHariIni();
+  }
+
+  const tanggalRencana = document.getElementById('tanggal_rencana_kembali');
+
+  if (tanggalRencana) {
+    const besok = new Date();
+    besok.setDate(besok.getDate() + 1);
+
+    const tahun = besok.getFullYear();
+    const bulan = String(besok.getMonth() + 1).padStart(2, '0');
+    const hari = String(besok.getDate()).padStart(2, '0');
+
+    tanggalRencana.min = `${tahun}-${bulan}-${hari}`;
+  }
+
+  document.getElementById('form-kategori')
+    ?.addEventListener('submit', simpanKategori);
+
+  document.getElementById('form-alat')
+    ?.addEventListener('submit', simpanAlat);
+
+  document.getElementById('form-peminjaman')
+    ?.addEventListener('submit', simpanPeminjaman);
+
+  document.getElementById('btn-batal-kategori')
+    ?.addEventListener('click', resetFormKategori);
+
+  document.getElementById('btn-batal-alat')
+    ?.addEventListener('click', resetFormAlat);
+
   await loadKategori();
   await loadAlat();
   await loadPeminjaman();

@@ -1,19 +1,42 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+  <title>Peminjaman Alat</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
-<body>
-<h1>Hai! Selamat Datang!</h1>
-<h2>Ini adalah halaman utama dari aplikasi peminjaman alat.</h2>
-<div><label for="nama_Peminjam">Nama Peminjam:</label>
-<input type="text" id="nama_Peminjam" placeholder="Masukkan nama peminjam"></div>
-<div><label for="barang_pinjam">Barang yang Dipinjam:</label>
-<input type="text" id="barang_pinjam" placeholder="Masukkan nama barang yang dipinjam"></div>
-<div><label for="tanggal_pinjam">Tanggal Peminjaman:</label>
-<input type="date" id="tanggal_pinjam"></div>
 
+<body class="min-h-screen bg-gradient-to-b from-black to-gray-900 text-white flex">
+
+  <nav class="w-56 min-h-screen border-r border-zinc-800 p-6 shrink-0">
+    <h1 class="text-lg font-semibold mb-8">Peminjaman Alat</h1>
+
+    <div class="flex flex-col gap-5 text-sm text-zinc-400">
+      <a href="index.html" class="text-white">Beranda</a>
+      <a href="dashb.html" class="hover:text-white">Dashboard</a>
+      <a href="peminjaman.html" class="hover:text-white">Peminjaman</a>
+    </div>
+  </nav>
+
+  <main class="flex-1 p-10">
+    <p class="text-sm text-zinc-500 mb-4">Sistem Informasi Sekolah</p>
+
+    <h2 class="text-4xl font-bold mb-5">
+      Sistem Peminjaman Alat Praktik
+    </h2>
+
+    <p class="text-zinc-400 max-w-lg mb-8">
+      Website untuk membantu proses peminjaman dan pengelolaan alat praktik.
+    </p>
+
+    <a href="peminjaman.html"
+       class="inline-block bg-white text-black px-5 py-3 text-sm hover:bg-zinc-300">
+      Mulai Peminjaman
+    </a>
+  </main>
+
+  <script src="js/app.js"></script>
 </body>
 </html>
